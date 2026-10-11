@@ -69,7 +69,7 @@ _Cost of this run (estimate shown before running): TBD._
 
 ### One surprising result
 
-_To be written once real numbers exist (Kenzie's part if he wants it)._
+_To be written once real numbers exist._
 
 ## 5. Limitations
 
