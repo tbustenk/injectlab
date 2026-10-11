@@ -106,6 +106,13 @@ def _to_messages(ctx: AgentContext) -> list[dict]:
     """
     messages: list[dict] = [{"role": "user", "content": ctx.user_request}]
     for step in ctx.transcript:
+        if step.status == "invalid":
+            # Replay the model's actual (unparseable) reply, then the correction,
+            # preserving strict user/assistant alternation.
+            messages.append({"role": "assistant",
+                             "content": step.action.args.get("raw", "")})
+            messages.append({"role": "user", "content": step.result})
+            continue
         action_json = json.dumps({"tool": step.action.tool,
                                   "args": dict(step.action.args)})
         messages.append({"role": "assistant", "content": action_json})

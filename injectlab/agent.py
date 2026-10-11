@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .models.base import AgentContext, ModelAdapter, Step
-from .protocol import parse_action
+from .protocol import Action, ProtocolError, parse_action
 from .tools import Environment, Message, Policy, ToolCall, allow_all, execute
 
 SYSTEM_PROMPT = (
@@ -52,7 +52,22 @@ class Agent:
 
         for _ in range(self.max_steps):
             ctx = AgentContext(self.system_prompt, user_request, transcript)
-            action = parse_action(self.model.next_action(ctx))
+            raw = self.model.next_action(ctx)
+            try:
+                action = parse_action(raw)
+            except ProtocolError:
+                # The mock always emits valid actions, but a real model will
+                # sometimes reply with prose or malformed JSON. Record the bad
+                # turn, ask for one valid action, and continue within the step
+                # budget rather than crashing a 500+ run grid. A model that never
+                # complies simply ends at max_steps: no leak, task incomplete.
+                correction = (
+                    "Your previous reply was not a single JSON action. Reply with"
+                    ' exactly one JSON object, e.g. {"tool": "finish", "args":'
+                    ' {"response": "..."}}, and nothing else.')
+                transcript.append(
+                    Step(Action("(unparsed)", {"raw": raw}), correction, "invalid"))
+                continue
 
             if action.tool == "finish":
                 resp = str(action.args.get("response", ""))
