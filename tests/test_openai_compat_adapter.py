@@ -61,6 +61,19 @@ def test_base_url_is_configurable_for_ollama(monkeypatch):
     assert captured["url"] == "http://localhost:11434/v1/chat/completions"
 
 
+def test_no_think_appends_tag_to_system_message(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode())
+        return _fake_response('{"tool": "finish", "args": {}}')
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    OpenAICompatAdapter(no_think=True).next_action(
+        AgentContext("SYSTEM PROMPT", "task", transcript=[]))
+    assert captured["body"]["messages"][0]["content"].endswith("/no_think")
+
+
 def test_api_key_adds_bearer_header_when_given(monkeypatch):
     captured = {}
 

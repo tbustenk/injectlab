@@ -39,21 +39,30 @@ class OpenAICompatAdapter(ModelAdapter):
     def __init__(self, model: str = "local-model", *,
                  base_url: str = DEFAULT_BASE_URL, api_key: str | None = None,
                  max_tokens: int = 1024, temperature: float = 0.0,
-                 timeout: float = 120.0):
+                 timeout: float = 300.0, no_think: bool = False):
         self.model = model
         self.name = f"local:{model}"
         self.base_url = base_url.rstrip("/")
         self._api_key = api_key  # local servers normally need none
         self.max_tokens = max_tokens
         self.temperature = temperature
+        # Local models can be slow (large models, first-load, CPU offload), so
+        # the default timeout is generous compared with a hosted API.
         self.timeout = timeout
+        # no_think appends the Qwen-style /no_think tag so a reasoning model
+        # answers directly. It makes "thinking disabled" reproducible in the
+        # tool rather than relying on a server UI toggle.
+        self.no_think = no_think
 
     def next_action(self, ctx: AgentContext) -> str:
+        messages = _to_messages(ctx)
+        if self.no_think and messages:
+            messages[0]["content"] += "\n/no_think"
         request_body = {
             "model": self.model,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
-            "messages": _to_messages(ctx),
+            "messages": messages,
         }
         headers = {"content-type": "application/json"}
         if self._api_key:

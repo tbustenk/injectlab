@@ -24,6 +24,7 @@ def _cmd_run(args):
         # execute() prints the cost estimate and runs nothing; then we ask.
         execute(mode="anthropic", model=args.model, out=args.out,
                 temperature=args.temperature, quick=args.quick,
+                timeout=args.timeout, no_think=args.no_think,
                 assume_yes=False, show_progress=False)
         try:
             ans = input("Proceed with the paid run? [y/N] ").strip().lower()
@@ -37,6 +38,7 @@ def _cmd_run(args):
     try:
         execute(mode=args.mode, model=args.model, base_url=args.base_url,
                 out=args.out, temperature=args.temperature, quick=args.quick,
+                timeout=args.timeout, no_think=args.no_think,
                 assume_yes=assume_yes)
     except RuntimeError as e:
         # Common case: local server down or key unset. The message is already
@@ -79,6 +81,12 @@ def _build_parser():
     r.add_argument("--quick", action="store_true",
                    help="demo-sized subset (1 mutation x 1 position) so a slow "
                         "local run finishes in minutes.")
+    r.add_argument("--timeout", type=float, default=None,
+                   help="per-call timeout in seconds (local models can be slow; "
+                        "default 300 for local).")
+    r.add_argument("--no-think", action="store_true",
+                   help="send the Qwen-style /no_think tag so a reasoning model "
+                        "answers directly (faster, cleaner for tool use).")
     r.add_argument("--yes", action="store_true",
                    help="confirm a paid hosted run (skip the prompt).")
     r.set_defaults(func=_cmd_run)

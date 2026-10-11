@@ -41,14 +41,21 @@ from .models.openai_compat import DEFAULT_BASE_URL, OpenAICompatAdapter
 from .report_html import format_html
 
 
-def _make_model_factory(mode, model, base_url, temperature):
+def _make_model_factory(mode, model, base_url, temperature, timeout=None,
+                        no_think=False):
     if mode == "mock":
         return lambda: MockModel()
     if mode == "local":
-        return lambda: OpenAICompatAdapter(
-            model=model, base_url=base_url, temperature=temperature)
+        kw = {"model": model, "base_url": base_url, "temperature": temperature,
+              "no_think": no_think}
+        if timeout is not None:
+            kw["timeout"] = timeout
+        return lambda: OpenAICompatAdapter(**kw)
     if mode == "anthropic":
-        return lambda: AnthropicAdapter(model=model, temperature=temperature)
+        kw = {"model": model, "temperature": temperature}
+        if timeout is not None:
+            kw["timeout"] = timeout
+        return lambda: AnthropicAdapter(**kw)
     raise ValueError(f"unknown mode {mode!r}")
 
 
@@ -98,7 +105,7 @@ def _writeup_section(reports, *, model_name, when, temperature, n):
 
 def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results",
             temperature=0.0, when=None, assume_yes=False, quick=False,
-            show_progress=True):
+            show_progress=True, timeout=None, no_think=False):
     """Run the grid under `mode` and write outputs. Returns a status dict.
 
     For mode="anthropic" without assume_yes, prints the cost estimate and returns
@@ -133,7 +140,8 @@ def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results"
             return {"status": "needs-confirmation"}
 
     name = _model_name(mode, model)
-    factory = _make_model_factory(mode, model, base_url, temperature)
+    factory = _make_model_factory(mode, model, base_url, temperature,
+                                  timeout=timeout, no_think=no_think)
 
     def _progress(done, total, cell_id):
         print(f"  [{done + 1}/{total}] {cell_id}", flush=True)
