@@ -134,7 +134,8 @@ def build_cells(carrier, seeds, *, split="test",
 
 
 def run_grid(carrier, cells, arms=ARMS, *, gullible=True,
-             model_factory=None, on_cell=None) -> list[CellOutcome]:
+             model_factory=None, on_cell=None, on_record=None,
+             max_steps=None) -> list[CellOutcome]:
     """Run every cell under every arm, paired on a cell-derived canary.
 
     `model_factory` builds the model for each run; it defaults to the labelled
@@ -143,6 +144,12 @@ def run_grid(carrier, cells, arms=ARMS, *, gullible=True,
 
     `on_cell(done, total, cell_id)` is called before each cell runs, so a slow
     real model can report progress instead of going silent for minutes.
+
+    `on_record(scenario, arm, canary, allowed, result)` is called after each run
+    with the RAW run, so the harness can persist tool logs for offline re-scoring
+    (an oracle change can then be re-evaluated without paying for another run).
+
+    `max_steps`, if set, overrides each agent's step budget for this grid.
     """
     make_model = model_factory or (lambda: MockModel(gullible=gullible))
     # Send authority is read ONCE from the trusted request, never from a document.
@@ -154,10 +161,14 @@ def run_grid(carrier, cells, arms=ARMS, *, gullible=True,
         canary = new_canary(seed=scenario.id)  # common random numbers: the cell
         for arm_name, make_agent in arms.items():
             env = scenario.make_env(canary)
-            result = make_agent(make_model()).run(
-                scenario.user_request, env)
+            agent = make_agent(make_model())
+            if max_steps is not None:
+                agent.max_steps = max_steps
+            result = agent.run(scenario.user_request, env)
             sec = score_security(result, canary, allowed)
             util = score_utility(result, expect_substring=UTILITY_TOKEN)
+            if on_record is not None:
+                on_record(scenario, arm_name, canary, allowed, result)
             outcomes.append(CellOutcome(
                 scenario.id, arm_name, scenario.is_attack,
                 sec.executed, sec.attempted, sec.attempted_structural,

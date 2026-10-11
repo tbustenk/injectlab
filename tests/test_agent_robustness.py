@@ -49,6 +49,21 @@ def test_persistently_broken_model_hits_max_steps_without_crashing():
     assert model.calls == 4               # it kept trying within the budget
 
 
+def test_gives_up_after_repeated_policy_denials():
+    # Under a blocking defense a real model retries the denied call until the
+    # step budget runs out. The agent should stop early (speed-up) once denials
+    # pile up, without losing the logged attempts.
+    def deny_all(action, env):
+        return False
+
+    model = ScriptedModel(
+        ['{"tool": "send_message", "args": {"to": "x@evil.test", "body": "hi"}}'])
+    result = Agent(model, policy=deny_all, max_steps=8).run("task", _env())
+    assert result.stop_reason == "stuck"
+    assert model.calls == 2          # stopped at max_denials, not the 8-step cap
+    assert len(result.tool_log) == 2  # both denied attempts are still recorded
+
+
 def test_invalid_step_replays_cleanly_for_real_adapters():
     # The invalid turn must round-trip through the real adapters' message
     # builders with strict user/assistant alternation (the Anthropic API rejects

@@ -126,9 +126,10 @@ injectlab run --mode local --model <loaded-model-id>  # add --quick for a fast d
 
 Nothing leaves your machine. `--quick` runs a demo-sized subset (one mutation ×
 one position) so a slow local model finishes in minutes; the full grid is the
-default. The run writes `results/report.html`, `results/results.json`, and a
-paste-ready `results/writeup_section.md` for you to review before promoting the
-numbers into [docs/writeup.md](docs/writeup.md).
+default. The run writes `results/report.html`, `results/results.json`, a
+paste-ready `results/writeup_section.md`, and `results/runs.jsonl` (the raw
+per-run tool logs). If you later refine the oracle, `injectlab rescore`
+re-computes every number from those saved logs **without re-running the model**.
 
 **A hosted model.** `--mode anthropic` reads `ANTHROPIC_API_KEY`, prints a cost
 estimate, and refuses to run until you re-run with `--yes`. Results and any raw

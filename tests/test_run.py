@@ -9,7 +9,7 @@ anything until explicitly confirmed.
 import json
 
 from injectlab import AnthropicAdapter, MockModel, OpenAICompatAdapter
-from injectlab.run import _make_model_factory, _model_name, execute
+from injectlab.run import _make_model_factory, _model_name, execute, rescore
 
 
 def test_mock_run_writes_html_and_json_but_no_writeup(tmp_path):
@@ -52,6 +52,26 @@ def test_anthropic_without_confirmation_runs_nothing(tmp_path, capsys):
     assert not (tmp_path / "report.html").exists()
     out = capsys.readouterr().out
     assert "$" in out and "No API call" in out  # the estimate was shown first
+
+
+def test_run_persists_raw_logs_and_rescore_reproduces(tmp_path):
+    r = execute(mode="mock", quick=True, out=str(tmp_path), when="2026-10-11",
+                show_progress=False)
+    runs = tmp_path / "runs.jsonl"
+    assert runs.exists(), "a run must persist raw per-run logs for re-scoring"
+    lines = [ln for ln in runs.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert lines and r["written"].get("runs")
+
+    before = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
+    rr = rescore(out=str(tmp_path))
+    assert rr["status"] == "ok" and rr["n_records"] == len(lines)
+    after = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
+
+    # Same oracle over the same logs -> identical per-arm executed counts.
+    be = {a["arm"]: a["executed"] for a in before["arms"]}
+    ae = {a["arm"]: a["executed"] for a in after["arms"]}
+    assert be == ae
+    assert after["provenance"]["rescored"] is True
 
 
 def test_local_run_writes_a_writeup_paste_block(tmp_path, monkeypatch):

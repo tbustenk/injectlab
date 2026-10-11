@@ -40,6 +40,12 @@ class Agent:
     model: ModelAdapter
     policy: Policy = allow_all
     max_steps: int = 8
+    # Give up after this many consecutive policy-denied calls: a real model
+    # tends to retry a blocked action until the step budget runs out, which
+    # wastes minutes per run under a blocking defense without changing the
+    # verdict (the attempt is already logged). Stopping early is purely a
+    # speed-up; security scoring reads the logged attempts either way.
+    max_denials: int = 2
     # Stage-5 defense seams. system_prompt swaps in a "persuade" defense;
     # content_filter is a "filter" defense applied to untrusted ingress before
     # the model sees it. Both default to no defense so the plain agent is bare.
@@ -49,6 +55,7 @@ class Agent:
     def run(self, user_request: str, env: Environment) -> RunResult:
         transcript: list[Step] = []
         tool_log: list[ToolCall] = []
+        denials = 0
 
         for _ in range(self.max_steps):
             ctx = AgentContext(self.system_prompt, user_request, transcript)
@@ -90,6 +97,15 @@ class Agent:
 
             tool_log.append(ToolCall(action.tool, dict(action.args), result, status))
             transcript.append(Step(action, result, status))
+
+            if status == "denied":
+                denials += 1
+                if denials >= self.max_denials:
+                    # The model is stuck retrying a blocked call; stop early.
+                    return RunResult(env.secret, None, transcript, tool_log,
+                                     env.outbox, "stuck")
+            else:
+                denials = 0
 
         return RunResult(env.secret, None, transcript, tool_log,
                          env.outbox, "max_steps")

@@ -23,10 +23,13 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from .agent import RunResult
 from .cost import estimate_cost, format_estimate
 from .corpus import load_corpus
 from .measure import (
     ARMS,
+    CellOutcome,
+    UTILITY_TOKEN,
     breakdown,
     build_cells,
     format_breakdown,
@@ -38,7 +41,9 @@ from .models.anthropic_api import DEFAULT_MODEL as ANTHROPIC_DEFAULT
 from .models.anthropic_api import AnthropicAdapter
 from .models.mock import MockModel
 from .models.openai_compat import DEFAULT_BASE_URL, OpenAICompatAdapter
+from .oracles import score_security, score_utility
 from .report_html import format_html
+from .tools import Message, ToolCall
 
 
 def _make_model_factory(mode, model, base_url, temperature, timeout=None,
@@ -105,7 +110,7 @@ def _writeup_section(reports, *, model_name, when, temperature, n):
 
 def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results",
             temperature=0.0, when=None, assume_yes=False, quick=False,
-            show_progress=True, timeout=None, no_think=False):
+            show_progress=True, timeout=None, no_think=False, max_steps=None):
     """Run the grid under `mode` and write outputs. Returns a status dict.
 
     For mode="anthropic" without assume_yes, prints the cost estimate and returns
@@ -146,10 +151,52 @@ def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results"
     def _progress(done, total, cell_id):
         print(f"  [{done + 1}/{total}] {cell_id}", flush=True)
 
+    records = []
+
+    def _collect(scenario, arm, canary, allowed, result):
+        records.append(_record_dict(scenario, arm, canary, allowed, result))
+
     if show_progress:
         print(f"Running {len(cells)} cells x {len(ARMS)} arms against {name} ...")
     outcomes = run_grid(carrier, cells, model_factory=factory,
-                        on_cell=_progress if show_progress else None)
+                        on_cell=_progress if show_progress else None,
+                        on_record=_collect, max_steps=max_steps)
+
+    provenance = {
+        "tool": "injectlab", "mode": mode, "model_name": name,
+        "base_url": base_url if mode == "local" else None,
+        "temperature": temperature, "date": when, "split": "test",
+        "arms": list(ARMS), "git_commit": _git_commit(),
+        "simulation": mode == "mock",
+    }
+    written = _emit(outcomes, out=out, name=name, when=when,
+                    temperature=temperature, provenance=provenance,
+                    write_writeup=(mode != "mock"))
+
+    # Raw per-run logs, so an oracle change can be re-scored offline (injectlab
+    # rescore) without paying for the model again. They hold canaries, so they
+    # live only in the gitignored results dir.
+    runs_path = Path(out) / "runs.jsonl"
+    runs_path.write_text("".join(json.dumps(r) + "\n" for r in records),
+                         encoding="utf-8")
+    written["runs"] = str(runs_path)
+
+    print(f"\nWrote: {', '.join(written.values())}")
+    if mode == "mock":
+        print("(SIMULATION: mock numbers are not findings about any real model.)")
+    else:
+        print("Paste results/writeup_section.md into docs/writeup.md section 4 "
+              "when you have reviewed the numbers.")
+    return {"status": "ok", "written": written, "model_name": name,
+            "n": outcomes and summarise(outcomes)[0].n or 0}
+
+
+def _emit(outcomes, *, out, name, when, temperature, provenance,
+          write_writeup) -> dict:
+    """Write report.html + results.json (+ writeup paste block) and print them.
+
+    Shared by a live run and by `rescore`, so both produce identical artefacts.
+    """
     reports = summarise(outcomes)
     tech = breakdown(outcomes, by="technique")
     n = reports[0].n if reports else 0
@@ -163,29 +210,15 @@ def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results"
     (outdir / "report.html").write_text(html, encoding="utf-8")
     written["html"] = str(outdir / "report.html")
 
-    results = {
-        "provenance": {
-            "tool": "injectlab",
-            "mode": mode,
-            "model_name": name,
-            "base_url": base_url if mode == "local" else None,
-            "temperature": temperature,
-            "date": when,
-            "split": "test",
-            "n_attack_cells_per_arm": n,
-            "arms": list(ARMS),
-            "git_commit": _git_commit(),
-            "simulation": mode == "mock",
-        },
-        "arms": [asdict(r) for r in reports],
-        "by_technique": [asdict(r) for r in tech],
-    }
+    results = {"provenance": {**provenance, "n_attack_cells_per_arm": n},
+               "arms": [asdict(r) for r in reports],
+               "by_technique": [asdict(r) for r in tech]}
     (outdir / "results.json").write_text(
         json.dumps(results, indent=2), encoding="utf-8")
     written["json"] = str(outdir / "results.json")
 
     # Mock numbers are never promoted to the public write-up, so no paste block.
-    if mode != "mock":
+    if write_writeup:
         section = _writeup_section(reports, model_name=name, when=when,
                                    temperature=temperature, n=n)
         (outdir / "writeup_section.md").write_text(section, encoding="utf-8")
@@ -194,13 +227,69 @@ def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results"
     print(format_report(reports, model_name=name))
     print()
     print(format_breakdown(tech, model_name=name))
-    print(f"\nWrote: {', '.join(written.values())}")
-    if mode == "mock":
-        print("(SIMULATION: mock numbers are not findings about any real model.)")
-    else:
-        print("Paste results/writeup_section.md into docs/writeup.md section 4 "
-              "when you have reviewed the numbers.")
-    return {"status": "ok", "written": written, "model_name": name, "n": n}
+    return written
+
+
+def _record_dict(scenario, arm, canary, allowed, result) -> dict:
+    return {
+        "cell_id": scenario.id, "arm": arm, "is_attack": scenario.is_attack,
+        "technique": scenario.technique, "position": scenario.position,
+        "canary": canary, "allowed": sorted(allowed),
+        "stop_reason": result.stop_reason, "final_response": result.final_response,
+        "tool_log": [{"tool": c.tool, "args": c.args, "result": c.result,
+                      "status": c.status} for c in result.tool_log],
+        "outbox": [{"to": m.to, "body": m.body} for m in result.outbox],
+    }
+
+
+def _replay(rec) -> RunResult:
+    tool_log = [ToolCall(c["tool"], dict(c["args"]), c["result"], c["status"])
+                for c in rec["tool_log"]]
+    outbox = [Message(m["to"], m["body"]) for m in rec["outbox"]]
+    return RunResult(rec["canary"], rec.get("final_response"), [], tool_log,
+                     outbox, rec["stop_reason"])
+
+
+def rescore(out="results") -> dict:
+    """Re-score a saved run's raw logs with the CURRENT oracle, no model calls.
+
+    Reads results/runs.jsonl (and results/results.json for provenance), re-runs
+    the oracle, and rewrites report.html + results.json. This is how an oracle
+    change is re-evaluated against real data without paying to run again.
+    """
+    outdir = Path(out)
+    runs_path = outdir / "runs.jsonl"
+    if not runs_path.exists():
+        raise RuntimeError(f"no saved runs at {runs_path}; run first.")
+    records = [json.loads(line) for line in
+               runs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    prov = {}
+    results_path = outdir / "results.json"
+    if results_path.exists():
+        prov = json.loads(results_path.read_text(encoding="utf-8")).get(
+            "provenance", {})
+    name = prov.get("model_name", "rescored")
+    when = prov.get("date")
+    temperature = prov.get("temperature")
+
+    outcomes = []
+    for rec in records:
+        result = _replay(rec)
+        sec = score_security(result, rec["canary"],
+                             frozenset(rec.get("allowed", [])))
+        util = score_utility(result, expect_substring=UTILITY_TOKEN)
+        outcomes.append(CellOutcome(
+            rec["cell_id"], rec["arm"], rec["is_attack"],
+            sec.executed, sec.attempted, sec.attempted_structural,
+            util.completed, rec.get("technique"), rec.get("position")))
+
+    provenance = {**prov, "rescored": True}
+    written = _emit(outcomes, out=out, name=name, when=when,
+                    temperature=temperature, provenance=provenance,
+                    write_writeup=not prov.get("simulation", False))
+    print(f"\nRe-scored {len(records)} runs. Wrote: {', '.join(written.values())}")
+    return {"status": "ok", "written": written, "n_records": len(records)}
 
 
 def main(argv=None):  # pragma: no cover - `python -m injectlab.run` -> `injectlab run`

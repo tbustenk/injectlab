@@ -13,7 +13,7 @@ route here.
 import argparse
 
 from .models.openai_compat import DEFAULT_BASE_URL, list_models
-from .run import execute
+from .run import execute, rescore
 
 MODES = ("mock", "local", "anthropic")
 
@@ -39,11 +39,18 @@ def _cmd_run(args):
         execute(mode=args.mode, model=args.model, base_url=args.base_url,
                 out=args.out, temperature=args.temperature, quick=args.quick,
                 timeout=args.timeout, no_think=args.no_think,
-                assume_yes=assume_yes)
+                max_steps=args.max_steps, assume_yes=assume_yes)
     except RuntimeError as e:
         # Common case: local server down or key unset. The message is already
         # actionable; show it, not a traceback.
         raise SystemExit(f"Run failed: {e}")
+
+
+def _cmd_rescore(args):
+    try:
+        rescore(out=args.out)
+    except RuntimeError as e:
+        raise SystemExit(f"rescore: {e}")
 
 
 def _cmd_doctor(args):
@@ -87,6 +94,8 @@ def _build_parser():
     r.add_argument("--no-think", action="store_true",
                    help="send the Qwen-style /no_think tag so a reasoning model "
                         "answers directly (faster, cleaner for tool use).")
+    r.add_argument("--max-steps", type=int, default=None,
+                   help="override the agent step budget (lower = faster runs).")
     r.add_argument("--yes", action="store_true",
                    help="confirm a paid hosted run (skip the prompt).")
     r.set_defaults(func=_cmd_run)
@@ -95,6 +104,12 @@ def _build_parser():
     d.add_argument("--base-url", default=DEFAULT_BASE_URL,
                    help=f"local server base URL (default {DEFAULT_BASE_URL}).")
     d.set_defaults(func=_cmd_doctor)
+
+    rs = sub.add_parser("rescore",
+                        help="re-score saved run logs with the current oracle")
+    rs.add_argument("--out", default="results",
+                    help="directory holding runs.jsonl (default results).")
+    rs.set_defaults(func=_cmd_rescore)
 
     return p
 
