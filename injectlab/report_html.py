@@ -38,6 +38,72 @@ def _rate_cell(k: int, n: int, ci: tuple[float, float]) -> str:
             f'<div class="sub">{k}/{n} &middot; {_ci(ci)}</div>')
 
 
+def _bars_chart(reports: list[ArmReport]) -> str:
+    """A screenshot-first view of the aggregate: executed vs attempted per arm,
+    each with its 95% Wilson interval drawn as a whisker.
+
+    The gap between the two bars IS the containment story -- a long attempted bar
+    over a zero executed bar means the model was fully fooled yet nothing left
+    (filter / egress_dlp); a flat executed bar on a structural arm is the whole
+    point of the project. Pure inline SVG, themed through the CSS vars, no assets.
+    """
+    if not reports:
+        return ""
+    W, padL, padR, padT, rowH, barH, gap = 720, 138, 18, 34, 44, 12, 6
+    plotW = W - padL - padR
+    H = padT + len(reports) * rowH + 6
+
+    def x(rate: float) -> float:
+        return padL + max(0.0, min(1.0, rate)) * plotW
+
+    parts = []
+    for g in (0, 0.25, 0.5, 0.75, 1.0):
+        gx = x(g)
+        parts.append(f"<line x1='{gx:.1f}' y1='{padT - 6}' x2='{gx:.1f}' "
+                     f"y2='{H - 6}' stroke='var(--line)' stroke-width='1'/>")
+        parts.append(f"<text x='{gx:.1f}' y='{padT - 12}' text-anchor='middle' "
+                     f"class='gx'>{int(g * 100)}%</text>")
+
+    for i, r in enumerate(reports):
+        top = padT + i * rowH
+        parts.append(f"<text x='4' y='{top + 21}' dominant-baseline='middle' "
+                     f"class='ylabel'>{escape(r.arm)}</text>")
+        series = [
+            (r.executed, r.n, r.executed_ci, "exec", top + 6),
+            (r.attempted, r.n, r.attempted_ci, "att", top + 6 + barH + gap),
+        ]
+        for k, n, ci, cls, by0 in series:
+            rate = k / n if n else 0.0
+            bx, cy = x(rate), by0 + barH / 2
+            parts.append(f"<rect x='{padL}' y='{by0}' width='{plotW}' "
+                         f"height='{barH}' rx='3' class='track'/>")
+            parts.append(f"<rect x='{padL}' y='{by0}' width='{bx - padL:.1f}' "
+                         f"height='{barH}' rx='3' class='bar {cls}'/>")
+            lo, hi = x(ci[0]), x(ci[1])
+            if hi - lo > 0.5:
+                parts.append(f"<line x1='{lo:.1f}' y1='{cy:.1f}' x2='{hi:.1f}' "
+                             f"y2='{cy:.1f}' class='whisk'/>")
+                for cap in (lo, hi):
+                    parts.append(f"<line x1='{cap:.1f}' y1='{cy - 3:.1f}' "
+                                 f"x2='{cap:.1f}' y2='{cy + 3:.1f}' class='whisk'/>")
+            if rate >= 0.82:
+                parts.append(f"<text x='{bx - 5:.1f}' y='{cy + 3.5:.1f}' "
+                             f"text-anchor='end' class='blab on'>{_pct(k, n)}</text>")
+            else:
+                parts.append(f"<text x='{bx + 5:.1f}' y='{cy + 3.5:.1f}' "
+                             f"text-anchor='start' class='blab'>{_pct(k, n)}</text>")
+
+    svg = (f"<svg viewBox='0 0 {W} {H}' class='barsvg' role='img' "
+           f"aria-label='Executed versus attempted exfiltration rate per arm, "
+           f"with 95% confidence whiskers'>{''.join(parts)}</svg>")
+    legend = (
+        "<div class='clegend'>"
+        "<span><i class='sw exec'></i>executed &mdash; the secret left</span>"
+        "<span><i class='sw att'></i>attempted &mdash; the model tried</span>"
+        "<span class='whisknote'>whisker = 95% Wilson interval</span></div>")
+    return f"<figure class='chart'>{svg}{legend}</figure>"
+
+
 def _heat_hue(rate: float) -> float:
     # Green (safe, 0%) through yellow to red (danger, 100%) for an executed rate.
     return (1.0 - rate) * 120
@@ -148,6 +214,7 @@ def _body(reports, rows, *, model_name, when, temperature):
        <i>contains</i> a still-fooled model is not the same as one that stops it
        being fooled. Every rate carries a 95% Wilson interval; the paired column
        is an exact McNemar test vs baseline.</p>
+    {_bars_chart(reports)}
     {_aggregate_table(reports)}
   </section>
 
@@ -251,6 +318,24 @@ font-weight:650}
 td.heat{font:700 .95rem/1.1 var(--mono);font-variant-numeric:tabular-nums;
 color:#fff;text-shadow:0 1px 2px var(--shadow)}
 .caption{color:var(--muted);font-size:.82rem}
+.chart{margin:16px 0}
+.barsvg{width:100%;height:auto;display:block;background:var(--card);
+border:1px solid var(--line);border-radius:12px;padding:8px 10px 10px}
+.barsvg .gx{fill:var(--muted);font:600 9px var(--mono)}
+.barsvg .ylabel{fill:var(--fg);font:650 11px var(--mono)}
+.barsvg .track{fill:var(--line);opacity:.5}
+.barsvg .bar.exec{fill:var(--bad)}
+.barsvg .bar.att{fill:var(--accent)}
+.barsvg .whisk{stroke:var(--fg);stroke-width:1.4;opacity:.5}
+.barsvg .blab{fill:var(--fg);font:700 10px var(--mono)}
+.barsvg .blab.on{fill:#fff}
+.clegend{display:flex;gap:16px;flex-wrap:wrap;margin:8px 2px 0;
+font:.76rem/1.3 var(--mono);color:var(--muted)}
+.clegend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;
+margin-right:6px;vertical-align:-1px}
+.clegend .sw.exec{background:var(--bad)}
+.clegend .sw.att{background:var(--accent)}
+.clegend .whisknote{opacity:.85}
 .limits{padding-left:20px}
 .limits li{margin:6px 0;max-width:66ch}
 #themer{position:fixed;top:14px;right:14px;z-index:9;background:var(--card);

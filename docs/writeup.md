@@ -14,6 +14,12 @@ email, a web page), how often does the attacker get the agent to take an action
 the user never asked for — specifically, to exfiltrate a secret — and which
 defenses measurably change that rate?
 
+The instrument is a deterministic detector over the agent's tool log (no second
+LLM judging). It separates two outcomes most reporting blurs: whether the agent
+was *fooled into attempting* exfiltration, and whether the secret *actually
+left*. Every defense is judged on both — because a control that only lowers the
+first is not the same as one that drives the second to zero.
+
 ## 2. Threat model (summary)
 
 Indirect injection: the attacker plants text where the agent later reads it; the

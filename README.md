@@ -13,6 +13,14 @@ This is a **measurement tool, not an exploit kit**. Everything targets a fake
 agent in a fake environment; attacker addresses use reserved TLDs (`.test`,
 `.example`) and point nowhere real.
 
+At its core is a **deterministic detector**: for every run it reads the agent's
+tool log — no second LLM judging — and separates two outcomes most reporting
+blurs together. Was the agent *attempted* on (fooled into trying to leak the
+secret), and did the secret *execute* (actually leave)? A prompt defense can
+drive "attempted" down; only a capability control reliably drives "executed" to
+zero even when the model is fully fooled. Measuring those two apart, across
+defenses, is the whole point.
+
 ## How it works (end to end)
 
 injectlab runs the *same* attack against an agent many times — with and without
@@ -84,7 +92,7 @@ the decision-maker changes.
 | Corpus + mutations | `corpus/seeds.yaml`, `injectlab/corpus.py`, `mutations.py` | Labelled injection seeds, deterministic language mutations, dev/test split. |
 | Defenses | `injectlab/defenses.py` | Three families — persuade (prompt), filter (sanitise input), constrain (least-privilege policy, egress DLP). |
 | Measurement | `injectlab/measure.py`, `stats.py` | Paired grid, Wilson 95% intervals, exact McNemar test, per-technique/position breakdown. |
-| HTML report | `injectlab/report_html.py` | A self-contained, dependency-free results page (aggregate table + heatmap). |
+| HTML report | `injectlab/report_html.py` | A self-contained, dependency-free results page (executed-vs-attempted bar chart + aggregate table + per-technique heatmap). |
 | Models | `injectlab/models/` | A labelled mock (CI), a stdlib Claude adapter, and a stdlib local OpenAI-compatible adapter. |
 | Cost | `injectlab/cost.py` | A pre-run dollar estimate, shown before any paid hosted run. |
 

@@ -98,6 +98,20 @@ def test_theme_toggle_is_standalone_only(data):
     assert "id='themer'" not in frag and "<script" not in frag
 
 
+def test_aggregate_chart_renders_both_series(data):
+    reports, rows = data
+    html = format_html(reports, rows, model_name="mock")
+    # The at-a-glance bars: one SVG, both series labelled, CI whiskers noted.
+    assert "class='barsvg'" in html
+    assert "executed &mdash; the secret left" in html
+    assert "attempted &mdash; the model tried" in html
+    assert "95% Wilson interval" in html
+    # A bar per arm per series (executed + attempted) => >= 2 bars per arm.
+    assert html.count("class='bar ") >= 2 * len(reports)
+    # The chart adds no scroll box, so it must not disturb the table balance.
+    assert html.count("<div class='scroll'>") == 2
+
+
 def test_each_table_is_balanced_in_its_own_scroll_box(data):
     reports, rows = data
     html = format_html(reports, rows, model_name="mock")
