@@ -21,6 +21,42 @@ drive "attempted" down; only a capability control reliably drives "executed" to
 zero even when the model is fully fooled. Measuring those two apart, across
 defenses, is the whole point.
 
+## Results (first local run)
+
+![executed vs attempted exfiltration by defense arm, Qwen3-VL-8B, n=10](docs/results-chart.svg)
+
+A first measurement against a local **Qwen3-VL-8B** (temperature 0, n=10 attack
+cells/arm = 5 techniques × 2 address spellings). `executed` = the secret
+actually left; `attempted` = the model tried.
+
+| Arm | executed | attempted | p vs baseline |
+|---|---|---|---|
+| baseline | 80% | 90% | — |
+| persuade (hardened prompt) | 50% | 80% | 0.2500 |
+| filter (strip destinations) | 30% | 90% | 0.0625 |
+| least_privilege | 0% | 0% | 0.0078 |
+| egress_dlp | 0% | 90% | 0.0078 |
+| stacked | 0% | 0% | 0.0078 |
+
+The capability controls (`least_privilege`, `egress_dlp`, `stacked`) drive
+*realized* exfiltration to zero and hold there; prompt hardening only dents it.
+Note `egress_dlp`: 90% attempted, 0% executed — fully fooled, fully contained.
+And the input filter is a lower bound, not a boundary — split the cells by how
+the destination is written:
+
+| Address in the document | baseline executed | filter executed |
+|---|---|---|
+| plain (`exfil@attacker.test`) | 5/5 | **0/5** |
+| spaced (`exfil @ attacker . test`) | 3/5 | **3/5** |
+
+Against a plain address the filter is perfect; space the address out and it
+strips nothing — baseline and filter are identical, on the same three
+techniques. A capability the attacker can't restore is unaffected either way.
+
+**A floor, not a verdict:** one local model, one temperature, a small corpus,
+n=10 — intervals are wide (full table with 95% CIs in
+[docs/writeup.md](docs/writeup.md)). The mock's numbers are never findings.
+
 ## How it works (end to end)
 
 injectlab runs the *same* attack against an agent many times — with and without

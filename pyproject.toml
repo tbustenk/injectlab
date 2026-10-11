@@ -14,7 +14,7 @@ dependencies = ["PyYAML>=6"]
 # an unpinned range lets CI install a newer ruff than the one developed against
 # and fail on rules that never ran locally. Pin + explicit select below = the
 # lint behaves identically everywhere. Bump deliberately, not by drift.
-dev = ["pytest>=7", "ruff==0.17.0"]
+dev = ["pytest>=8,<10", "ruff==0.17.0"]
 
 [project.scripts]
 injectlab = "injectlab.cli:main"
