@@ -34,6 +34,14 @@ _API_VERSION = "2023-06-01"
 # still accepts `temperature`, so temperature-0 determinism is available here.
 DEFAULT_MODEL = "claude-haiku-4-5"
 
+# Models that reject the `temperature` parameter (a 400). For these the param is
+# omitted; they do not offer sampling-temperature control, so the temperature-0
+# reproducibility claim does not apply to them.
+_TEMPERATURE_UNSUPPORTED = (
+    "claude-opus-4-7", "claude-opus-4-8",
+    "claude-sonnet-5", "claude-fable-5", "claude-mythos-5",
+)
+
 
 class AnthropicAdapter(ModelAdapter):
     name = "anthropic"
@@ -53,15 +61,23 @@ class AnthropicAdapter(ModelAdapter):
             raise RuntimeError(
                 "ANTHROPIC_API_KEY is not set; a real run needs a key.")
 
-        body = json.dumps({
+        request_body = {
             "model": self.model,
             "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
             "system": ctx.system_prompt,
             "messages": _to_messages(ctx),
-        }).encode()
+        }
+        # Only send `temperature` to models that accept it; the rest 400 on it.
+        if any(self.model.startswith(p) for p in _TEMPERATURE_UNSUPPORTED):
+            if self.temperature != 0.0:
+                raise RuntimeError(
+                    f"{self.model} does not accept a temperature; got "
+                    f"temperature={self.temperature}. Leave it at the default.")
+        else:
+            request_body["temperature"] = self.temperature
 
-        req = urllib.request.Request(_ENDPOINT, data=body, method="POST", headers={
+        req = urllib.request.Request(_ENDPOINT, data=json.dumps(request_body).encode(),
+                                     method="POST", headers={
             "content-type": "application/json",
             "x-api-key": self._api_key,
             "anthropic-version": _API_VERSION,
@@ -70,8 +86,13 @@ class AnthropicAdapter(ModelAdapter):
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 payload = json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
+            # The body carries the API's error detail; it never echoes the key.
             detail = e.read().decode(errors="replace")
             raise RuntimeError(f"Anthropic API error {e.code}: {detail}") from e
+        except urllib.error.URLError as e:
+            # Network-level failure (DNS, connection refused, timeout).
+            raise RuntimeError(
+                f"Could not reach the Anthropic API: {e.reason}") from e
 
         return _first_text(payload)
 

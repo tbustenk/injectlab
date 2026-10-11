@@ -70,3 +70,39 @@ def test_missing_key_raises_without_network(monkeypatch):
     adapter = AnthropicAdapter(api_key=None)
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
         adapter.next_action(AgentContext("SYS", "task", transcript=[]))
+
+
+def test_temperature_omitted_for_models_that_reject_it(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode())
+        return _fake_response('{"tool": "finish", "args": {}}')
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    # Default temperature 0.0 on a reject-list model: param omitted, no error.
+    AnthropicAdapter("claude-opus-4-8", api_key="k").next_action(
+        AgentContext("SYS", "task", transcript=[]))
+    assert "temperature" not in captured["body"]
+
+
+def test_nonzero_temperature_on_rejecting_model_raises(monkeypatch):
+    # Should raise before any network call.
+    monkeypatch.setattr("urllib.request.urlopen",
+                        lambda *a, **k: pytest.fail("should not hit network"))
+    adapter = AnthropicAdapter("claude-sonnet-5", api_key="k", temperature=0.7)
+    with pytest.raises(RuntimeError, match="does not accept a temperature"):
+        adapter.next_action(AgentContext("SYS", "task", transcript=[]))
+
+
+def test_network_error_is_wrapped(monkeypatch):
+    import urllib.error
+
+    def boom(req, timeout=None):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    adapter = AnthropicAdapter(api_key="k")
+    with pytest.raises(RuntimeError, match="Could not reach the Anthropic API"):
+        adapter.next_action(AgentContext("SYS", "task", transcript=[]))
