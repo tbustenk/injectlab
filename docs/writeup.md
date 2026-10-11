@@ -22,9 +22,12 @@ a confused-deputy problem. Classic exfiltration needs the **lethal trifecta**:
 private data + untrusted content + an outbound channel. Full model in
 [threat-model.md](threat-model.md).
 
-Frameworks (verify identifiers against the source before quoting):
-- OWASP LLM Top 10 — **LLM01: Prompt Injection** *(verify)*
-- MITRE ATLAS — prompt-injection technique *(verify)*
+Frameworks (verified against source, 2026-10):
+- OWASP Top 10 for LLM Applications — **LLM01:2025 Prompt Injection** (direct
+  and indirect). Distinct from the general OWASP Top 10:2025, where injection is
+  A05.
+- MITRE ATLAS — **AML.T0051 LLM Prompt Injection**, sub-technique **.001
+  Indirect** (the case measured here).
 
 ## 3. Method
 

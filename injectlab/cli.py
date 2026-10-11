@@ -35,11 +35,14 @@ def _cmd_run(args):
             return
         assume_yes = True
 
+    muts = args.mutations.split(",") if args.mutations else None
+    poss = tuple(args.positions.split(",")) if args.positions else None
     try:
         execute(mode=args.mode, model=args.model, base_url=args.base_url,
                 out=args.out, temperature=args.temperature, quick=args.quick,
                 timeout=args.timeout, no_think=args.no_think,
-                max_steps=args.max_steps, assume_yes=assume_yes)
+                max_steps=args.max_steps, mutations=muts, positions=poss,
+                assume_yes=assume_yes)
     except RuntimeError as e:
         # Common case: local server down or key unset. The message is already
         # actionable; show it, not a traceback.
@@ -96,6 +99,12 @@ def _build_parser():
                         "answers directly (faster, cleaner for tool use).")
     r.add_argument("--max-steps", type=int, default=None,
                    help="override the agent step budget (lower = faster runs).")
+    r.add_argument("--mutations", default=None,
+                   help="comma-separated mutation subset (default: all), e.g. "
+                        "identity,case_mangle,homoglyph.")
+    r.add_argument("--positions", default=None,
+                   help="comma-separated position subset (default: all), e.g. "
+                        "start,end.")
     r.add_argument("--yes", action="store_true",
                    help="confirm a paid hosted run (skip the prompt).")
     r.set_defaults(func=_cmd_run)

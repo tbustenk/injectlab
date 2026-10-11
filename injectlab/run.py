@@ -110,7 +110,8 @@ def _writeup_section(reports, *, model_name, when, temperature, n):
 
 def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results",
             temperature=0.0, when=None, assume_yes=False, quick=False,
-            show_progress=True, timeout=None, no_think=False, max_steps=None):
+            show_progress=True, timeout=None, no_think=False, max_steps=None,
+            mutations=None, positions=None):
     """Run the grid under `mode` and write outputs. Returns a status dict.
 
     For mode="anthropic" without assume_yes, prints the cost estimate and returns
@@ -133,6 +134,11 @@ def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results"
         # Smallest grid that still exercises every technique and every arm.
         cells = build_cells(carrier, seeds, mutations=["identity"],
                             positions=("end",))
+    elif mutations is not None or positions is not None:
+        # A reproducible time-boxed subset: fewer mutations/positions, but every
+        # technique and arm still present (and the paired design intact).
+        cells = build_cells(carrier, seeds, mutations=mutations,
+                            positions=positions or ("start", "middle", "end"))
     else:
         cells = build_cells(carrier, seeds)
 

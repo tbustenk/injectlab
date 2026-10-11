@@ -142,17 +142,17 @@ Every configuration is also run with **no attack present**. These must show
 when it should and that a "safe" number isn't just a broken agent. Security and
 utility are always reported together.
 
-## 9. Frameworks (identifiers marked "verify")
+## 9. Frameworks (verified against source, 2026-10)
 
-- **OWASP Top 10 for LLM Applications** — prompt injection is the LLM01 entry
-  (believed "LLM01: Prompt Injection", 2025 revision). *verify exact label/year
-  against the OWASP source before quoting.*
-- **MITRE ATLAS** — has a prompt-injection technique, believed `AML.T0051`
-  ("LLM Prompt Injection") with sub-techniques for direct (`.000`) and indirect
-  (`.001`). *verify technique ID and sub-technique numbers against the ATLAS
-  matrix before quoting.*
+- **OWASP Top 10 for LLM Applications** — **LLM01:2025 Prompt Injection** (OWASP
+  Gen AI Security Project). It explicitly distinguishes *direct* and *indirect*
+  prompt injection. Note this is the LLM-specific list; in the general OWASP Top
+  10:2025, injection is A05 — a different entry.
+- **MITRE ATLAS** — **AML.T0051 "LLM Prompt Injection"**, with sub-techniques
+  **.000 Direct** and **.001 Indirect** (and a newer **.002 Triggered**). This
+  harness measures the **.001 Indirect** case.
 
-No other citations are made in this stage; none are invented.
+No other citations are made; none are invented.
 
 ## 10. Scope and safety
 
