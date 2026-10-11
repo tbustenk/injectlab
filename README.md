@@ -98,13 +98,15 @@ standard library.
 
 ## Run it
 
-Everything is driven by one command, which writes a dark HTML report and a
-results JSON (with full provenance) to the gitignored `results/` directory:
+After `pip install -e .` the `injectlab` command is available (or use
+`python -m injectlab`). It writes a dark HTML report and a results JSON (with
+full provenance) to the gitignored `results/` directory:
 
 ```
-python -m injectlab.run                                    # mock (free, offline)
-python -m injectlab.run --mode local --model <model-id>    # a local model
-python -m injectlab.run --mode anthropic --model claude-haiku-4-5   # hosted; asks first
+injectlab run                                    # mock (free, offline)
+injectlab doctor                                 # check a local model server
+injectlab run --mode local --model <model-id>    # a local model
+injectlab run --mode anthropic --model claude-haiku-4-5   # hosted; asks first
 ```
 
 **Mock (default, free, offline).** A labelled **simulation** for CI. Because it
@@ -115,15 +117,18 @@ findings about any real model**, so a mock run never writes a write-up block.
 
 **A real local model (LM Studio / Ollama / llama.cpp).** Load an instruct model
 and start the local server (LM Studio: *Developer → Start Server*, default
-`:1234`; Ollama serves `:11434/v1` — pass `--base-url` for anything else), then:
+`:1234`; Ollama serves `:11434/v1`). Confirm it's reachable, then run:
 
 ```
-python -m injectlab.run --mode local --model <your-loaded-model-id>
+injectlab doctor                                      # prints the loaded model id
+injectlab run --mode local --model <loaded-model-id>  # add --quick for a fast demo
 ```
 
-Nothing leaves your machine. The run writes `results/report.html`,
-`results/results.json`, and a paste-ready `results/writeup_section.md` for you to
-review before promoting the numbers into [docs/writeup.md](docs/writeup.md).
+Nothing leaves your machine. `--quick` runs a demo-sized subset (one mutation ×
+one position) so a slow local model finishes in minutes; the full grid is the
+default. The run writes `results/report.html`, `results/results.json`, and a
+paste-ready `results/writeup_section.md` for you to review before promoting the
+numbers into [docs/writeup.md](docs/writeup.md).
 
 **A hosted model.** `--mode anthropic` reads `ANTHROPIC_API_KEY`, prints a cost
 estimate, and refuses to run until you re-run with `--yes`. Results and any raw

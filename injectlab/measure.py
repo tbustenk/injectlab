@@ -134,18 +134,23 @@ def build_cells(carrier, seeds, *, split="test",
 
 
 def run_grid(carrier, cells, arms=ARMS, *, gullible=True,
-             model_factory=None) -> list[CellOutcome]:
+             model_factory=None, on_cell=None) -> list[CellOutcome]:
     """Run every cell under every arm, paired on a cell-derived canary.
 
     `model_factory` builds the model for each run; it defaults to the labelled
     mock. Pass a real adapter factory (e.g. `lambda: AnthropicAdapter()`) for a
-    Stage-7 real run — only after showing a cost estimate and getting the go.
+    real run — only after showing a cost estimate and getting the go.
+
+    `on_cell(done, total, cell_id)` is called before each cell runs, so a slow
+    real model can report progress instead of going silent for minutes.
     """
     make_model = model_factory or (lambda: MockModel(gullible=gullible))
     # Send authority is read ONCE from the trusted request, never from a document.
     allowed = recipients_in_request(carrier.user_request)
     outcomes: list[CellOutcome] = []
-    for scenario in cells:
+    for i, scenario in enumerate(cells):
+        if on_cell is not None:
+            on_cell(i, len(cells), scenario.id)
         canary = new_canary(seed=scenario.id)  # common random numbers: the cell
         for arm_name, make_agent in arms.items():
             env = scenario.make_env(canary)

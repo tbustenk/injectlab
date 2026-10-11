@@ -12,6 +12,9 @@ dependencies = ["PyYAML>=6"]
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 
+[project.scripts]
+injectlab = "injectlab.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["injectlab*"]
 

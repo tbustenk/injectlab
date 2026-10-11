@@ -19,7 +19,6 @@ never edits the public write-up.
     python -m injectlab.run --mode anthropic --model claude-haiku-4-5   # asks first
 """
 
-import argparse
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -40,8 +39,6 @@ from .models.anthropic_api import AnthropicAdapter
 from .models.mock import MockModel
 from .models.openai_compat import DEFAULT_BASE_URL, OpenAICompatAdapter
 from .report_html import format_html
-
-MODES = ("mock", "local", "anthropic")
 
 
 def _make_model_factory(mode, model, base_url, temperature):
@@ -100,11 +97,16 @@ def _writeup_section(reports, *, model_name, when, temperature, n):
 
 
 def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results",
-            temperature=0.0, when=None, assume_yes=False):
+            temperature=0.0, when=None, assume_yes=False, quick=False,
+            show_progress=True):
     """Run the grid under `mode` and write outputs. Returns a status dict.
 
     For mode="anthropic" without assume_yes, prints the cost estimate and returns
     {"status": "needs-confirmation"} WITHOUT running anything (no network).
+
+    quick=True runs a demo-sized subset (one mutation x one position) so a run
+    against a slow local model finishes in a few minutes; the full grid is the
+    default for real numbers.
     """
     if when is None:
         from datetime import date
@@ -115,7 +117,12 @@ def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results"
         model = ANTHROPIC_DEFAULT
 
     carrier, seeds = load_corpus()
-    cells = build_cells(carrier, seeds)
+    if quick:
+        # Smallest grid that still exercises every technique and every arm.
+        cells = build_cells(carrier, seeds, mutations=["identity"],
+                            positions=("end",))
+    else:
+        cells = build_cells(carrier, seeds)
 
     if mode == "anthropic":
         # Charter: a dollar figure ALWAYS precedes a paid run, by any entry path.
@@ -127,7 +134,14 @@ def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results"
 
     name = _model_name(mode, model)
     factory = _make_model_factory(mode, model, base_url, temperature)
-    outcomes = run_grid(carrier, cells, model_factory=factory)
+
+    def _progress(done, total, cell_id):
+        print(f"  [{done + 1}/{total}] {cell_id}", flush=True)
+
+    if show_progress:
+        print(f"Running {len(cells)} cells x {len(ARMS)} arms against {name} ...")
+    outcomes = run_grid(carrier, cells, model_factory=factory,
+                        on_cell=_progress if show_progress else None)
     reports = summarise(outcomes)
     tech = breakdown(outcomes, by="technique")
     n = reports[0].n if reports else 0
@@ -181,45 +195,10 @@ def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results"
     return {"status": "ok", "written": written, "model_name": name, "n": n}
 
 
-def main(argv=None):  # pragma: no cover - thin CLI wrapper around execute()
-    p = argparse.ArgumentParser(
-        prog="python -m injectlab.run",
-        description="Run the injectlab grid against a model and write results/.")
-    p.add_argument("--mode", choices=MODES, default="mock",
-                   help="mock (default, free/offline), local (LM Studio/Ollama), "
-                        "or anthropic (hosted, paid).")
-    p.add_argument("--model", default=None,
-                   help="model id (local: the loaded model; anthropic: e.g. "
-                        "claude-haiku-4-5).")
-    p.add_argument("--base-url", default=DEFAULT_BASE_URL,
-                   help=f"local server base URL (default {DEFAULT_BASE_URL}).")
-    p.add_argument("--out", default="results", help="output directory.")
-    p.add_argument("--temperature", type=float, default=0.0)
-    p.add_argument("--yes", action="store_true",
-                   help="confirm a paid hosted run (skip the prompt).")
-    args = p.parse_args(argv)
-
-    assume_yes = args.yes
-    if args.mode == "anthropic" and not assume_yes:
-        # Show the estimate, then ask interactively.
-        execute(mode="anthropic", model=args.model, out=args.out,
-                temperature=args.temperature, assume_yes=False)
-        try:
-            ans = input("Proceed with the paid run? [y/N] ").strip().lower()
-        except EOFError:
-            ans = "n"
-        if ans not in ("y", "yes"):
-            print("Aborted; nothing was run.")
-            return
-        assume_yes = True
-
-    try:
-        execute(mode=args.mode, model=args.model, base_url=args.base_url,
-                out=args.out, temperature=args.temperature, assume_yes=assume_yes)
-    except RuntimeError as e:
-        # The common case: the local server isn't running or the key is unset.
-        # The adapter's message is already actionable; show it, not a traceback.
-        raise SystemExit(f"Run failed: {e}")
+def main(argv=None):  # pragma: no cover - `python -m injectlab.run` -> `injectlab run`
+    import sys
+    from .cli import main as cli_main
+    cli_main(["run", *(argv if argv is not None else sys.argv[1:])])
 
 
 if __name__ == "__main__":  # pragma: no cover

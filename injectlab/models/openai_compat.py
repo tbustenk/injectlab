@@ -78,6 +78,26 @@ class OpenAICompatAdapter(ModelAdapter):
         return _first_message(payload)
 
 
+def list_models(base_url: str = DEFAULT_BASE_URL, *, timeout: float = 5.0) -> list[str]:
+    """Ask a local server which models it is serving (GET /models).
+
+    Used by `injectlab doctor` to confirm reachability before a run and to show
+    the exact model id to pass to --model. Raises an actionable RuntimeError if
+    the server cannot be reached.
+    """
+    req = urllib.request.Request(f"{base_url.rstrip('/')}/models", method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode())
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", e)
+        raise RuntimeError(
+            f"Could not reach a local OpenAI-compatible server at {base_url}. "
+            f"Is LM Studio (or Ollama) running with the server started? "
+            f"({reason})") from e
+    return [m.get("id", "") for m in payload.get("data", [])]
+
+
 def _to_messages(ctx: AgentContext) -> list[dict]:
     """Replay the run so far as OpenAI chat messages.
 
