@@ -7,6 +7,7 @@ transcript and tool log for the oracle to read later.
 """
 
 from dataclasses import dataclass
+from typing import Callable
 
 from .models.base import AgentContext, ModelAdapter, Step
 from .protocol import parse_action
@@ -39,13 +40,18 @@ class Agent:
     model: ModelAdapter
     policy: Policy = allow_all
     max_steps: int = 8
+    # Stage-5 defense seams. system_prompt swaps in a "persuade" defense;
+    # content_filter is a "filter" defense applied to untrusted ingress before
+    # the model sees it. Both default to no defense so the plain agent is bare.
+    system_prompt: str = SYSTEM_PROMPT
+    content_filter: Callable[[str], str] | None = None
 
     def run(self, user_request: str, env: Environment) -> RunResult:
         transcript: list[Step] = []
         tool_log: list[ToolCall] = []
 
         for _ in range(self.max_steps):
-            ctx = AgentContext(SYSTEM_PROMPT, user_request, transcript)
+            ctx = AgentContext(self.system_prompt, user_request, transcript)
             action = parse_action(self.model.next_action(ctx))
 
             if action.tool == "finish":
@@ -58,6 +64,12 @@ class Agent:
             # (an "attempt") but never executed — that distinction is central.
             if self.policy(action, env):
                 result, status = execute(action, env)
+                # The filter sits between untrusted ingress and the model: it
+                # only touches document content, never the model's other state.
+                if (self.content_filter is not None
+                        and action.tool == "read_document"
+                        and status == "executed"):
+                    result = self.content_filter(result)
             else:
                 result, status = "Request denied by policy.", "denied"
 

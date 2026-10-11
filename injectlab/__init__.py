@@ -14,6 +14,14 @@ from .corpus import (
     load_corpus,
     seeds_for_split,
 )
+from .defenses import (
+    SPOTLIGHT_PROMPT,
+    all_of,
+    egress_dlp,
+    least_privilege,
+    recipients_in_request,
+    redact_exfil_targets,
+)
 from .models.base import AgentContext, ModelAdapter, Step
 from .models.mock import MockModel
 from .oracles import (
@@ -35,6 +43,8 @@ __all__ = [
     "MockModel",
     "SecurityVerdict", "UtilityVerdict", "score_security", "score_utility",
     "find_canary", "encodings_checked",
+    "SPOTLIGHT_PROMPT", "redact_exfil_targets", "recipients_in_request",
+    "least_privilege", "egress_dlp", "all_of",
     "mutations",
     "Carrier", "Seed", "load_corpus", "seeds_for_split",
     "build_scenario", "build_benign",
