@@ -31,6 +31,8 @@ from .measure import (
     run_grid,
     summarise,
 )
+from .cost import CostEstimate, estimate_cost, format_estimate
+from .models.anthropic_api import AnthropicAdapter
 from .models.base import AgentContext, ModelAdapter, Step
 from .models.mock import MockModel
 from .oracles import (
@@ -58,6 +60,8 @@ __all__ = [
     "wilson_interval", "mcnemar_exact",
     "ARMS", "ArmReport", "CellOutcome",
     "build_cells", "run_grid", "summarise", "format_report",
+    "AnthropicAdapter",
+    "CostEstimate", "estimate_cost", "format_estimate",
     "mutations",
     "Carrier", "Seed", "load_corpus", "seeds_for_split",
     "build_scenario", "build_benign",

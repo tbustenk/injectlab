@@ -107,8 +107,15 @@ def build_cells(carrier, seeds, *, split="test",
     return cells
 
 
-def run_grid(carrier, cells, arms=ARMS, *, gullible=True) -> list[CellOutcome]:
-    """Run every cell under every arm, paired on a cell-derived canary."""
+def run_grid(carrier, cells, arms=ARMS, *, gullible=True,
+             model_factory=None) -> list[CellOutcome]:
+    """Run every cell under every arm, paired on a cell-derived canary.
+
+    `model_factory` builds the model for each run; it defaults to the labelled
+    mock. Pass a real adapter factory (e.g. `lambda: AnthropicAdapter()`) for a
+    Stage-7 real run — only after showing a cost estimate and getting the go.
+    """
+    make_model = model_factory or (lambda: MockModel(gullible=gullible))
     # Send authority is read ONCE from the trusted request, never from a document.
     allowed = recipients_in_request(carrier.user_request)
     outcomes: list[CellOutcome] = []
@@ -116,7 +123,7 @@ def run_grid(carrier, cells, arms=ARMS, *, gullible=True) -> list[CellOutcome]:
         canary = new_canary(seed=scenario.id)  # common random numbers: the cell
         for arm_name, make_agent in arms.items():
             env = scenario.make_env(canary)
-            result = make_agent(MockModel(gullible=gullible)).run(
+            result = make_agent(make_model()).run(
                 scenario.user_request, env)
             sec = score_security(result, canary, allowed)
             util = score_utility(result, expect_substring=UTILITY_TOKEN)
