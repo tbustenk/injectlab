@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "injectlab"
+version = "0.0.1"
+description = "A measurement harness for indirect prompt injection against tool-using LLM agents."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+include = ["injectlab*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
