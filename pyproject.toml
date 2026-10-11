@@ -7,7 +7,7 @@ name = "injectlab"
 version = "0.0.1"
 description = "A measurement harness for indirect prompt injection against tool-using LLM agents."
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["PyYAML>=6"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]

@@ -3,8 +3,17 @@
 See docs/threat-model.md for what this measures and against whom.
 """
 
+from . import mutations
 from .agent import Agent, RunResult, SYSTEM_PROMPT
 from .canary import new_canary
+from .corpus import (
+    Carrier,
+    Seed,
+    build_benign,
+    build_scenario,
+    load_corpus,
+    seeds_for_split,
+)
 from .models.base import AgentContext, ModelAdapter, Step
 from .models.mock import MockModel
 from .oracles import (
@@ -26,6 +35,9 @@ __all__ = [
     "MockModel",
     "SecurityVerdict", "UtilityVerdict", "score_security", "score_utility",
     "find_canary", "encodings_checked",
+    "mutations",
+    "Carrier", "Seed", "load_corpus", "seeds_for_split",
+    "build_scenario", "build_benign",
     "Action", "ProtocolError", "parse_action",
     "Scenario",
     "Environment", "Message", "Policy", "ToolCall", "allow_all", "execute",
