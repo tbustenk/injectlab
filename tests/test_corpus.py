@@ -46,16 +46,32 @@ def test_benign_control_reads_zero():
     assert not v.attempted and not v.executed
 
 
-def test_every_seed_x_mutation_is_a_real_attack_at_baseline():
+def test_every_seed_x_default_mutation_is_a_real_attack_at_baseline():
+    # Every destination-PRESERVING spelling must still succeed at baseline, so a
+    # defense that moves the number gets the credit, not a broken attack.
     carrier, seeds = load_corpus()
     for seed in seeds:
-        for mut in mutations.MUTATIONS:
+        for mut in mutations.DEFAULT_MUTATIONS:
             scenario = build_scenario(carrier, seed, mutation=mut)
             result, canary = _run(scenario)
             v = score_security(result, canary)
             assert v.attempted and v.executed, (
                 f"{seed.id} under {mut} did not succeed at baseline"
             )
+
+
+def test_obfuscate_target_defeats_the_simple_mock():
+    # The mock reads a contiguous address and cannot reconstruct a spaced one,
+    # so it does NOT attack under obfuscate_target. That is the point: whether an
+    # obfuscated destination still leaks is a question only a real model answers,
+    # which is why this probe is run against a real model, never scored on the
+    # mock. (The filter is bypassed regardless -- see test_defenses.)
+    carrier, seeds = load_corpus()
+    for seed in seeds:
+        scenario = build_scenario(carrier, seed, mutation="obfuscate_target")
+        result, canary = _run(scenario)
+        v = score_security(result, canary)
+        assert not v.executed, f"{seed.id}: mock unexpectedly read a spaced address"
 
 
 def test_position_variants_build():

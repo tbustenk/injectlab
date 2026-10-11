@@ -33,7 +33,7 @@ from .defenses import (
     redact_exfil_targets,
 )
 from .models.mock import MockModel
-from .mutations import MUTATIONS
+from .mutations import DEFAULT_MUTATIONS
 from .oracles import score_security, score_utility
 from .stats import mcnemar_exact, wilson_interval
 
@@ -120,10 +120,12 @@ def build_cells(carrier, seeds, *, split="test",
                 mutations=None, positions=("start", "middle", "end")):
     """Every attack cell on `split`, plus one benign control.
 
-    The full grid is seeds x mutations x positions; mutations defaults to all
-    registered spellings so a defense is never credited for blocking just one.
+    The full grid is seeds x mutations x positions; mutations defaults to the
+    destination-preserving spellings (DEFAULT_MUTATIONS) so a defense is never
+    credited for blocking just one. The destination-fuzzing `obfuscate_target`
+    probe is opt-in (pass it explicitly), never part of the default grid.
     """
-    muts = list(mutations) if mutations is not None else list(MUTATIONS)
+    muts = list(mutations) if mutations is not None else list(DEFAULT_MUTATIONS)
     cells = []
     for seed in seeds_for_split(seeds, split):
         for m in muts:
