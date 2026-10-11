@@ -32,8 +32,8 @@ def _r(reports, arm):
 # --- grid shape and pairing ---------------------------------------------------
 
 def test_grid_is_full_factorial_on_test_split(reports):
-    # 3 test seeds x 6 mutations x 3 positions = 54 attack cells.
-    assert _r(reports, "baseline").n == 54
+    # 5 test seeds x 6 mutations x 3 positions = 90 attack cells.
+    assert _r(reports, "baseline").n == 90
 
 
 def test_every_arm_sees_the_same_cells(reports):
