@@ -22,6 +22,15 @@ from .defenses import (
     recipients_in_request,
     redact_exfil_targets,
 )
+from .measure import (
+    ARMS,
+    ArmReport,
+    CellOutcome,
+    build_cells,
+    format_report,
+    run_grid,
+    summarise,
+)
 from .models.base import AgentContext, ModelAdapter, Step
 from .models.mock import MockModel
 from .oracles import (
@@ -34,6 +43,7 @@ from .oracles import (
 )
 from .protocol import Action, ProtocolError, parse_action
 from .scenario import Scenario
+from .stats import mcnemar_exact, wilson_interval
 from .tools import Environment, Message, Policy, ToolCall, allow_all, execute
 
 __all__ = [
@@ -45,6 +55,9 @@ __all__ = [
     "find_canary", "encodings_checked",
     "SPOTLIGHT_PROMPT", "redact_exfil_targets", "recipients_in_request",
     "least_privilege", "egress_dlp", "all_of",
+    "wilson_interval", "mcnemar_exact",
+    "ARMS", "ArmReport", "CellOutcome",
+    "build_cells", "run_grid", "summarise", "format_report",
     "mutations",
     "Carrier", "Seed", "load_corpus", "seeds_for_split",
     "build_scenario", "build_benign",
