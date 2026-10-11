@@ -35,6 +35,7 @@ from .measure import (
     summarise,
 )
 from .cost import CostEstimate, estimate_cost, format_estimate
+from .report_html import format_html
 from .models.anthropic_api import AnthropicAdapter
 from .models.base import AgentContext, ModelAdapter, Step
 from .models.mock import MockModel
@@ -66,6 +67,7 @@ __all__ = [
     "breakdown", "format_breakdown",
     "AnthropicAdapter",
     "CostEstimate", "estimate_cost", "format_estimate",
+    "format_html",
     "mutations",
     "Carrier", "Seed", "load_corpus", "seeds_for_split",
     "build_scenario", "build_benign",
