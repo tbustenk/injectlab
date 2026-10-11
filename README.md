@@ -1,5 +1,7 @@
 # injectlab
 
+[![ci](https://github.com/tbustenk/injectlab/actions/workflows/ci.yml/badge.svg)](https://github.com/tbustenk/injectlab/actions/workflows/ci.yml)
+
 A measurement harness for **indirect prompt injection** against tool-using LLM
 agents. It answers one question:
 
@@ -142,3 +144,7 @@ plainly: static attacker, JSON text protocol rather than native tool calling,
 small synthetic task set, small per-technique n, temperature-0 single sample.
 See [docs/writeup.md](docs/writeup.md) for the results write-up and
 [docs/threat-model.md](docs/threat-model.md) for the full threat model.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
