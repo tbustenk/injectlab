@@ -39,6 +39,7 @@ from .report_html import format_html
 from .models.anthropic_api import AnthropicAdapter
 from .models.base import AgentContext, ModelAdapter, Step
 from .models.mock import MockModel
+from .models.openai_compat import DEFAULT_BASE_URL, OpenAICompatAdapter
 from .oracles import (
     SecurityVerdict,
     UtilityVerdict,
@@ -66,6 +67,7 @@ __all__ = [
     "build_cells", "run_grid", "summarise", "format_report",
     "breakdown", "format_breakdown",
     "AnthropicAdapter",
+    "OpenAICompatAdapter", "DEFAULT_BASE_URL",
     "CostEstimate", "estimate_cost", "format_estimate",
     "format_html",
     "mutations",
