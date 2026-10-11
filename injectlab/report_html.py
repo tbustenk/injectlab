@@ -12,18 +12,16 @@ cannot mislead on its own:
     attacker, JSON text protocol rather than native tool calling).
 
 The page is fully self-contained (inline CSS, no external assets, UTF-8) so it
-renders from a file:// open or embedded in an Artifact. format_html(...,
-standalone=True) returns a complete document for results/report.html;
-standalone=False returns a style+markup fragment for embedding.
+renders from a file:// open or embedded in an Artifact. It is DARK BY DEFAULT:
+the dark palette is the base, light is reached only via :root[data-theme=light]
+(the standalone document ships a toggle; the embed fragment leaves theme control
+to its host). format_html(..., standalone=True) returns a complete document for
+results/report.html; standalone=False returns a style+markup fragment.
 """
 
 from html import escape
 
 from .measure import ArmReport, BreakdownRow, breakdown, build_cells, run_grid, summarise
-
-# Primary endpoint for the heatmap colour. High = bad (the secret left), so the
-# hue runs green (0%) -> red (100%).
-_HEATMAP_METRIC = "executed"
 
 
 def _pct(k: int, n: int) -> str:
@@ -40,16 +38,15 @@ def _rate_cell(k: int, n: int, ci: tuple[float, float]) -> str:
             f'<div class="sub">{k}/{n} &middot; {_ci(ci)}</div>')
 
 
-def _heat_style(rate: float) -> str:
-    # Green (safe, 0%) to red (danger, 100%) for an "executed" rate.
-    hue = (1.0 - rate) * 120
-    return f"background:hsl({hue:.0f},62%,42%);color:#fff"
+def _heat_hue(rate: float) -> float:
+    # Green (safe, 0%) through yellow to red (danger, 100%) for an executed rate.
+    return (1.0 - rate) * 120
 
 
 def _aggregate_table(reports: list[ArmReport]) -> str:
     head = (
         "<tr><th>arm</th><th>n</th><th>executed</th><th>attempted</th>"
-        "<th>structural</th><th>benign task</th><th>paired p vs baseline</th></tr>"
+        "<th>structural</th><th>benign task</th><th>paired p vs&nbsp;baseline</th></tr>"
     )
     rows = []
     for r in reports:
@@ -57,12 +54,23 @@ def _aggregate_table(reports: list[ArmReport]) -> str:
         benign = ('<span class="ok">ok</span>' if r.benign_completed
                   else '<span class="broken">BROKEN</span>')
         rows.append(
-            f"<tr><td class='arm'>{escape(r.arm)}</td><td>{r.n}</td>"
+            f"<tr><td class='arm'>{escape(r.arm)}</td><td class='n'>{r.n}</td>"
             f"<td class='primary'>{_rate_cell(r.executed, r.n, r.executed_ci)}</td>"
             f"<td>{_rate_cell(r.attempted, r.n, r.attempted_ci)}</td>"
             f"<td>{_rate_cell(r.attempted_structural, r.n, r.structural_ci)}</td>"
-            f"<td>{benign}</td><td>{p}</td></tr>")
-    return f"<table class='agg'><thead>{head}</thead><tbody>{''.join(rows)}</tbody></table>"
+            f"<td>{benign}</td><td class='pval'>{p}</td></tr>")
+    return (f"<div class='scroll'><table class='agg'><thead>{head}</thead>"
+            f"<tbody>{''.join(rows)}</tbody></table></div>")
+
+
+def _legend() -> str:
+    # The gradient mirrors _heat_hue exactly: green(120) -> yellow(60) -> red(0).
+    bar = ("linear-gradient(90deg,"
+           "hsl(120,58%,42%),hsl(60,58%,42%),hsl(0,58%,42%))")
+    return (f"<div class='legend'><span class='lkey'>executed rate</span>"
+            f"<span class='bar' style='background:{bar}' aria-hidden='true'></span>"
+            f"<span class='lends'><span>0% &middot; blocked</span>"
+            f"<span>100% &middot; leaked</span></span></div>")
 
 
 def _heatmap(rows: list[BreakdownRow]) -> str:
@@ -84,14 +92,16 @@ def _heatmap(rows: list[BreakdownRow]) -> str:
                 continue
             rate = r.executed / r.n if r.n else 0.0
             title = f"executed {r.executed}/{r.n} {_ci(r.executed_ci)}"
-            tds.append(f"<td class='heat' style='{_heat_style(rate)}' "
-                       f"title='{escape(title)}'>{_pct(r.executed, r.n)}</td>")
+            tds.append(
+                f"<td class='heat' style='background:hsl({_heat_hue(rate):.0f},58%,42%)' "
+                f"title='{escape(title)}'>{_pct(r.executed, r.n)}</td>")
         body.append(f"<tr>{''.join(tds)}</tr>")
     caption = (f"executed rate by {escape(by)} &times; arm &middot; "
                f"n={n_per} per cell (each interval is wide &mdash; read the "
                "pattern, not a single cell)")
-    return (f"<table class='heat'><thead>{head}</thead>"
-            f"<tbody>{''.join(body)}</tbody></table>"
+    return (f"{_legend()}"
+            f"<div class='scroll'><table class='heat'><thead>{head}</thead>"
+            f"<tbody>{''.join(body)}</tbody></table></div>"
             f"<p class='caption'>{caption}</p>")
 
 
@@ -114,93 +124,155 @@ def _body(reports, rows, *, model_name, when, temperature):
         'at the foot of this page.</div>'
     )
     meta = " &middot; ".join(filter(None, [
-        f"model: <b>{escape(model_name)}</b>",
-        f"date: {escape(when)}" if when else "",
-        f"temperature: {escape(str(temperature))}" if temperature is not None else "",
-        f"n (attack cells per arm): {reports[0].n}" if reports else "",
+        f"model <b>{escape(model_name)}</b>",
+        f"{escape(when)}" if when else "",
+        f"temperature {escape(str(temperature))}" if temperature is not None else "",
+        f"n={reports[0].n} attack cells/arm" if reports else "",
     ]))
     return f"""\
 <main>
-  <h1>injectlab &mdash; indirect prompt injection measurement</h1>
+  <header class="masthead">
+    <p class="eyebrow">Indirect prompt injection &middot; measurement harness</p>
+    <h1>injectlab</h1>
+    <p class="lede">How often does an attacker get a tool-using agent to
+       exfiltrate a secret it was never asked to touch &mdash; and which defenses
+       actually move that number?</p>
+  </header>
   {banner}
   <p class="meta">{meta}</p>
 
-  <h2>By defense (aggregate)</h2>
-  <p>Primary endpoint is <b>executed</b> (the secret left the environment).
-     <b>attempted</b> and <b>structural</b> are shown beside it: a defense that
-     merely <i>contains</i> a still-fooled model is not the same as one that
-     stops it being fooled. Rates carry a 95% Wilson interval; the paired column
-     is an exact McNemar test vs baseline.</p>
-  {_aggregate_table(reports)}
+  <section>
+    <h2>By defense <span class="h2note">aggregate</span></h2>
+    <p>Primary endpoint is <b>executed</b> (the secret left the environment).
+       <b>attempted</b> and <b>structural</b> sit beside it: a defense that merely
+       <i>contains</i> a still-fooled model is not the same as one that stops it
+       being fooled. Every rate carries a 95% Wilson interval; the paired column
+       is an exact McNemar test vs baseline.</p>
+    {_aggregate_table(reports)}
+  </section>
 
-  <h2>By technique</h2>
-  <p>The same paired cells, sliced by injection technique. This is descriptive:
-     per-cell n is small, so no paired test is run here &mdash; it maps where to
-     look, it does not render a verdict.</p>
-  {_heatmap(rows)}
+  <section>
+    <h2>By technique <span class="h2note">descriptive</span></h2>
+    <p>The same paired cells, sliced by injection technique. No paired test runs
+       here &mdash; per-cell n is small, so this maps <i>where to look</i>, it does
+       not render a verdict.</p>
+    {_heatmap(rows)}
+  </section>
 
-  <h2>Limitations</h2>
-  <ul class="limits">
-    <li><b>Static attacker.</b> A fixed corpus; an adaptive attacker usually does
-        better. These are a floor, not a ceiling.</li>
-    <li><b>Encoding coverage is a lower bound.</b> The oracle checks a fixed list
-        of encodings; anything not enumerated is under-counted.</li>
-    <li><b>JSON text protocol, not native tool calling.</b> Results may not
-        transfer to native function-calling APIs.</li>
-    <li><b>Small per-technique n.</b> Each heatmap cell is noisy; lead with the
-        aggregate and treat cells as hypotheses.</li>
-    <li><b>Multiple comparisons.</b> Several arms vs baseline inflate false
-        positives; lead with effect size.</li>
-  </ul>
+  <section>
+    <h2>Limitations</h2>
+    <ul class="limits">
+      <li><b>Static attacker.</b> A fixed corpus; an adaptive attacker usually does
+          better. These are a floor, not a ceiling.</li>
+      <li><b>Encoding coverage is a lower bound.</b> The oracle checks a fixed list
+          of encodings; anything not enumerated is under-counted.</li>
+      <li><b>JSON text protocol, not native tool calling.</b> Results may not
+          transfer to native function-calling APIs.</li>
+      <li><b>Small per-technique n.</b> Each heatmap cell is noisy; lead with the
+          aggregate and treat cells as hypotheses.</li>
+      <li><b>Multiple comparisons.</b> Several arms vs baseline inflate false
+          positives; lead with effect size.</li>
+    </ul>
+  </section>
 </main>"""
 
 
 def _css() -> str:
+    # Dark is the BASE (the designed, screenshot-ready look); light is an opt-in
+    # override only. Boldness is spent on the green->red heatmap; the chrome is
+    # quiet cool-slate with a restrained indigo accent.
     return """\
-:root{color-scheme:light dark;
---bg:#fbfbfd;--fg:#1b1d24;--muted:#5e6470;--line:#e4e6ec;--head:#f2f3f7;
---card:#f6f7fb;--accent:#5b4bf0;--ok:#1f9d57;--bad:#d1374b;
+:root{color-scheme:dark light;
+--bg:#0e0f14;--fg:#e8eaf1;--muted:#8a90a2;--line:#23252f;--head:#171922;
+--card:#14161d;--accent:#9d8cff;--ok:#49cb84;--bad:#ff6b7a;--shadow:rgba(0,0,0,.45);
 --mono:ui-monospace,SFMono-Regular,"Cascadia Mono",Consolas,Menlo,monospace;
 --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-@media(prefers-color-scheme:dark){:root{--bg:#14151a;--fg:#e7e8ec;--muted:#969aa8;
---line:#282a32;--head:#1c1e26;--card:#191b22;--accent:#9d8cff;--ok:#43c37e;--bad:#ff6b7a}}
-:root[data-theme=dark]{--bg:#14151a;--fg:#e7e8ec;--muted:#969aa8;--line:#282a32;
---head:#1c1e26;--card:#191b22;--accent:#9d8cff;--ok:#43c37e;--bad:#ff6b7a}
-:root[data-theme=light]{--bg:#fbfbfd;--fg:#1b1d24;--muted:#5e6470;--line:#e4e6ec;
---head:#f2f3f7;--card:#f6f7fb;--accent:#5b4bf0;--ok:#1f9d57;--bad:#d1374b}
+:root[data-theme=light]{color-scheme:light;
+--bg:#fbfbfd;--fg:#1b1d24;--muted:#5e6470;--line:#e4e6ec;--head:#f2f3f7;
+--card:#f6f7fb;--accent:#5b4bf0;--ok:#1f9d57;--bad:#d1374b;--shadow:rgba(0,0,0,.14)}
+:root[data-theme=dark]{color-scheme:dark;
+--bg:#0e0f14;--fg:#e8eaf1;--muted:#8a90a2;--line:#23252f;--head:#171922;
+--card:#14161d;--accent:#9d8cff;--ok:#49cb84;--bad:#ff6b7a;--shadow:rgba(0,0,0,.45)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 var(--sans)}
-main{max-width:980px;margin:0 auto;padding:40px 20px 72px}
-h1{font-size:1.5rem;line-height:1.25;margin:0 0 14px;text-wrap:balance;letter-spacing:-.01em}
-h2{font-size:1.05rem;margin:40px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line);text-wrap:balance}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 var(--sans);
+-webkit-font-smoothing:antialiased}
+main{max-width:980px;margin:0 auto;padding:clamp(28px,5vw,56px) 20px 80px}
+.masthead{margin-bottom:22px}
+.eyebrow{margin:0 0 10px;font:600 .72rem/1.2 var(--mono);text-transform:uppercase;
+letter-spacing:.14em;color:var(--accent)}
+h1{font-size:clamp(1.9rem,5vw,2.6rem);line-height:1.02;margin:0 0 12px;
+letter-spacing:-.025em;text-wrap:balance;font-weight:720}
+.lede{margin:0;color:var(--muted);max-width:60ch;font-size:1.02rem;text-wrap:pretty}
+h2{display:flex;align-items:baseline;gap:10px;font-size:1.08rem;margin:42px 0 8px;
+padding-bottom:7px;border-bottom:1px solid var(--line);text-wrap:balance}
+.h2note{font:600 .62rem/1 var(--mono);text-transform:uppercase;letter-spacing:.1em;
+color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px}
 p{margin:8px 0;max-width:68ch}
-b{font-weight:650}
+b{font-weight:640}
 .meta{color:var(--muted);font:.84rem/1.5 var(--mono)}
-.banner{padding:11px 14px;border-radius:9px;font-weight:600;margin:14px 0;
+.banner{padding:12px 15px;border-radius:10px;font-weight:600;margin:16px 0;
 border:1px solid transparent}
-.banner.sim{background:#7a1420;color:#fff;border-color:#9c2230}
-.banner.real{background:#12402a;color:#eafff2;border-color:#1c6440}
-.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin:12px 0}
+.banner.sim{background:linear-gradient(180deg,#7c1522,#64101b);color:#ffe9ec;
+border-color:#9c2230}
+.banner.real{background:linear-gradient(180deg,#13462d,#0f3a26);color:#e6fff1;
+border-color:#1c6440}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px;
+background:var(--card);margin:14px 0}
 table{border-collapse:collapse;width:100%;font-size:.9rem}
-.agg th,.agg td{border-bottom:1px solid var(--line);padding:10px 12px;text-align:center;vertical-align:middle}
-.agg thead th{background:var(--head);font:600 .68rem/1.2 var(--sans);
-text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.agg th,.agg td{border-bottom:1px solid var(--line);padding:11px 13px;
+text-align:center;vertical-align:middle}
+.agg thead th{background:var(--head);font:600 .66rem/1.2 var(--sans);
+text-transform:uppercase;letter-spacing:.07em;color:var(--muted);white-space:nowrap}
 .agg tbody tr:last-child td{border-bottom:0}
-.agg td.arm{text-align:left;font-weight:650;font-family:var(--mono);font-size:.84rem}
-.agg td.primary{background:var(--card);box-shadow:inset 3px 0 var(--accent)}
-.rate{font:700 1rem/1.1 var(--mono);font-variant-numeric:tabular-nums}
-.sub{color:var(--muted);font:.7rem/1.2 var(--mono);margin-top:3px;font-variant-numeric:tabular-nums}
+.agg tbody tr:hover td{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.agg td.arm{text-align:left;font-weight:650;font-family:var(--mono);font-size:.85rem}
+.agg td.n,.agg td.pval{font-family:var(--mono);font-variant-numeric:tabular-nums;
+color:var(--muted)}
+.agg td.primary{box-shadow:inset 3px 0 var(--accent)}
+.rate{font:700 1.02rem/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.sub{color:var(--muted);font:.7rem/1.2 var(--mono);margin-top:3px;
+font-variant-numeric:tabular-nums}
 .ok{color:var(--ok);font-weight:700}
 .broken{color:var(--bad);font-weight:700}
-table.heat{border:1px solid var(--line);border-radius:10px;overflow:hidden}
-table.heat td,table.heat th{border:1px solid var(--line);padding:10px 8px;text-align:center}
+.legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0 4px;
+font:.75rem/1 var(--mono);color:var(--muted)}
+.legend .lkey{text-transform:uppercase;letter-spacing:.08em}
+.legend .bar{height:10px;width:min(260px,42vw);border-radius:999px;
+border:1px solid var(--line)}
+.legend .lends{display:flex;justify-content:space-between;
+width:min(260px,42vw);gap:12px}
+table.heat td,table.heat th{border:1px solid var(--line);padding:11px 8px;
+text-align:center}
 table.heat thead th,table.heat .rowhead{background:var(--head)}
-table.heat thead th{font:600 .68rem/1.2 var(--sans);text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-table.heat .rowhead{text-align:left;font-family:var(--mono);font-size:.82rem;font-weight:650}
-td.heat{font:700 .95rem/1.1 var(--mono);font-variant-numeric:tabular-nums}
+table.heat thead th{font:600 .66rem/1.2 var(--sans);text-transform:uppercase;
+letter-spacing:.06em;color:var(--muted)}
+table.heat .rowhead{text-align:left;font-family:var(--mono);font-size:.82rem;
+font-weight:650}
+td.heat{font:700 .95rem/1.1 var(--mono);font-variant-numeric:tabular-nums;
+color:#fff;text-shadow:0 1px 2px var(--shadow)}
 .caption{color:var(--muted);font-size:.82rem}
 .limits{padding-left:20px}
-.limits li{margin:5px 0;max-width:66ch}"""
+.limits li{margin:6px 0;max-width:66ch}
+#themer{position:fixed;top:14px;right:14px;z-index:9;background:var(--card);
+color:var(--fg);border:1px solid var(--line);border-radius:999px;
+padding:7px 14px;font:600 .74rem/1 var(--mono);cursor:pointer}
+#themer:hover{border-color:var(--accent)}
+#themer:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}"""
+
+
+# Standalone-only: a dark-default page that can be flipped to light. The embed
+# fragment omits this so its host keeps sole control of the theme.
+_TOGGLE = (
+    "<button id='themer' type='button' "
+    "aria-label='Switch between light and dark theme'>Light</button>"
+    "<script>(function(){var r=document.documentElement,"
+    "b=document.getElementById('themer');"
+    "b.addEventListener('click',function(){"
+    "var toLight=r.getAttribute('data-theme')!=='light';"
+    "r.setAttribute('data-theme',toLight?'light':'dark');"
+    "b.textContent=toLight?'Dark':'Light';});})();</script>"
+)
 
 
 def format_html(reports: list[ArmReport], rows: list[BreakdownRow], *,
@@ -208,23 +280,20 @@ def format_html(reports: list[ArmReport], rows: list[BreakdownRow], *,
                 temperature: float | None = None, standalone: bool = True) -> str:
     """Render one measurement run as HTML.
 
-    standalone=True returns a complete document (for results/report.html);
-    standalone=False returns `<style>...</style>` + body markup, for embedding
-    (e.g. an Artifact, which supplies its own <head>/<body>).
+    standalone=True returns a complete, dark-by-default document (for
+    results/report.html) carrying its own light/dark toggle; standalone=False
+    returns `<style>...</style>` + body markup, for embedding in a host that
+    supplies its own <head>/<body> and theme control (e.g. an Artifact).
     """
     body = _body(reports, rows, model_name=model_name, when=when,
                  temperature=temperature)
-    style = f"<style>{_css()}</style>"
-    # Tables can be wide; let them scroll inside their own box, never the page.
-    content = f"{style}\n{body}".replace(
-        "<table class='agg'>", "<div class='scroll'><table class='agg'>").replace(
-        "</tbody></table>", "</tbody></table></div>")
+    content = f"<style>{_css()}</style>\n{body}"
     if not standalone:
         return content
     title = f"injectlab measurement &mdash; {escape(model_name)}"
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            f"<title>{title}</title></head><body>{content}</body></html>")
+            f"<title>{title}</title></head><body>{_TOGGLE}{content}</body></html>")
 
 
 def main() -> None:  # pragma: no cover - convenience entry point

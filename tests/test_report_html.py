@@ -79,3 +79,29 @@ def test_heatmap_lists_every_technique_and_arm(data):
         assert technique in html
     for arm in ("baseline", "least_privilege", "stacked"):
         assert arm in html
+
+
+def test_dark_is_the_default_theme_with_light_available(data):
+    reports, rows = data
+    html = format_html(reports, rows, model_name="mock")
+    # Base color-scheme leads with dark; light exists only as an explicit override.
+    assert "color-scheme:dark" in html
+    assert "data-theme=light" in html
+
+
+def test_theme_toggle_is_standalone_only(data):
+    reports, rows = data
+    doc = format_html(reports, rows, model_name="mock", standalone=True)
+    frag = format_html(reports, rows, model_name="mock", standalone=False)
+    assert "id='themer'" in doc and "<script" in doc
+    # The embed fragment leaves theme control to its host: no toggle, no script.
+    assert "id='themer'" not in frag and "<script" not in frag
+
+
+def test_each_table_is_balanced_in_its_own_scroll_box(data):
+    reports, rows = data
+    html = format_html(reports, rows, model_name="mock")
+    # Both tables wrapped; opening/closing scroll divs must balance (regression:
+    # a global replace once appended an orphan </div> after the heatmap).
+    assert html.count("<div class='scroll'>") == 2
+    assert html.count("</table></div>") == 2
