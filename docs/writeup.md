@@ -95,9 +95,13 @@ _To be written once real numbers exist._
 ```
 pip install -e ".[dev]"
 python -m pytest
-python -m injectlab.measure          # mock grid (free, offline)
+python -m injectlab.run                                  # mock grid (free, offline)
+python -m injectlab.run --mode local --model <model-id>  # a local model (LM Studio/Ollama)
 ```
 
-Real runs set `ANTHROPIC_API_KEY`, show a cost estimate first
-(`injectlab.cost`), then drive the grid with `AnthropicAdapter`. Results land in
-the gitignored `results/` directory and are never committed.
+A hosted run (`--mode anthropic --model <id>`) reads `ANTHROPIC_API_KEY` and
+prints a cost estimate first, refusing to run until confirmed with `--yes`.
+Every run writes `results/report.html` + `results/results.json` (with model id,
+date, n, split, arms, and git commit) to the gitignored `results/` directory; a
+non-mock run also writes a paste-ready `results/writeup_section.md` for the §4
+table above. Results are never committed.

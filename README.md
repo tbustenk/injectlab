@@ -98,47 +98,36 @@ standard library.
 
 ## Run it
 
-**Mock (free, offline).** Prints the aggregate table and the per-technique
-heatmap, then writes a standalone HTML page to `results/` (gitignored):
+Everything is driven by one command, which writes a dark HTML report and a
+results JSON (with full provenance) to the gitignored `results/` directory:
 
 ```
-python -m injectlab.measure        # text table + heatmap
-python -m injectlab.report_html    # writes results/report.html
+python -m injectlab.run                                    # mock (free, offline)
+python -m injectlab.run --mode local --model <model-id>    # a local model
+python -m injectlab.run --mode anthropic --model claude-haiku-4-5   # hosted; asks first
 ```
 
-The mock is a labelled **simulation** for CI. Because it keys on the exfil
-destination and ignores the persuasion, every technique behaves identically —
-its heatmap is deliberately flat. **Its numbers are not findings about any real
-model.**
+**Mock (default, free, offline).** A labelled **simulation** for CI. Because it
+keys on the exfil destination and ignores the persuasion, every technique
+behaves identically — its heatmap is deliberately flat. **Its numbers are not
+findings about any real model**, so a mock run never writes a write-up block.
+(For just the text table + heatmap, `python -m injectlab.measure`.)
 
-**Against a real local model (LM Studio / Ollama).** Load an instruct model and
-start the local server (LM Studio: *Developer → Start Server*, default
-`:1234`; Ollama serves `:11434/v1`), then drive the same grid through the local
-adapter:
+**A real local model (LM Studio / Ollama / llama.cpp).** Load an instruct model
+and start the local server (LM Studio: *Developer → Start Server*, default
+`:1234`; Ollama serves `:11434/v1` — pass `--base-url` for anything else), then:
 
-```python
-from pathlib import Path
-from injectlab import (
-    load_corpus, build_cells, run_grid, summarise, breakdown,
-    format_report, format_html, OpenAICompatAdapter,
-)
-
-carrier, seeds = load_corpus()
-cells = build_cells(carrier, seeds)
-outcomes = run_grid(carrier, cells,
-                    model_factory=lambda: OpenAICompatAdapter(model="your-loaded-model"))
-
-name = "local:your-loaded-model"
-print(format_report(summarise(outcomes), model_name=name))
-
-Path("results").mkdir(exist_ok=True)
-Path("results/report.html").write_text(
-    format_html(summarise(outcomes), breakdown(outcomes, by="technique"), model_name=name),
-    encoding="utf-8")
+```
+python -m injectlab.run --mode local --model <your-loaded-model-id>
 ```
 
-Nothing leaves your machine. Results and any raw output stay in the gitignored
-`results/` directory and are never committed.
+Nothing leaves your machine. The run writes `results/report.html`,
+`results/results.json`, and a paste-ready `results/writeup_section.md` for you to
+review before promoting the numbers into [docs/writeup.md](docs/writeup.md).
+
+**A hosted model.** `--mode anthropic` reads `ANTHROPIC_API_KEY`, prints a cost
+estimate, and refuses to run until you re-run with `--yes`. Results and any raw
+output stay in the gitignored `results/` and are never committed.
 
 ## Honesty rules
 

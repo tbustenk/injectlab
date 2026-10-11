@@ -117,11 +117,13 @@ def execute(*, mode="mock", model=None, base_url=DEFAULT_BASE_URL, out="results"
     carrier, seeds = load_corpus()
     cells = build_cells(carrier, seeds)
 
-    if mode == "anthropic" and not assume_yes:
+    if mode == "anthropic":
+        # Charter: a dollar figure ALWAYS precedes a paid run, by any entry path.
         print(format_estimate(estimate_cost(carrier, cells, ARMS, model)))
-        print("\nPaid run NOT confirmed. Re-run with --yes to proceed; "
-              "nothing was run.")
-        return {"status": "needs-confirmation"}
+        if not assume_yes:
+            print("\nPaid run NOT confirmed. Re-run with --yes to proceed; "
+                  "nothing was run.")
+            return {"status": "needs-confirmation"}
 
     name = _model_name(mode, model)
     factory = _make_model_factory(mode, model, base_url, temperature)
@@ -211,8 +213,13 @@ def main(argv=None):  # pragma: no cover - thin CLI wrapper around execute()
             return
         assume_yes = True
 
-    execute(mode=args.mode, model=args.model, base_url=args.base_url,
-            out=args.out, temperature=args.temperature, assume_yes=assume_yes)
+    try:
+        execute(mode=args.mode, model=args.model, base_url=args.base_url,
+                out=args.out, temperature=args.temperature, assume_yes=assume_yes)
+    except RuntimeError as e:
+        # The common case: the local server isn't running or the key is unset.
+        # The adapter's message is already actionable; show it, not a traceback.
+        raise SystemExit(f"Run failed: {e}")
 
 
 if __name__ == "__main__":  # pragma: no cover
