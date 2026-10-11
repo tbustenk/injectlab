@@ -66,6 +66,10 @@ class CellOutcome:
     attempted: bool
     attempted_structural: bool
     completed: bool
+    # Self-describing labels (None/"" on the benign control) so a breakdown can
+    # group by technique or position without re-loading the corpus.
+    technique: str | None = None
+    position: str | None = None
 
 
 @dataclass
@@ -84,6 +88,28 @@ class ArmReport:
     helped: int = 0        # baseline leaked, this arm blocked
     hurt: int = 0          # baseline safe, this arm leaked
     p_value: float | None = None
+
+    @property
+    def executed_rate(self) -> float:
+        return self.executed / self.n if self.n else 0.0
+
+
+@dataclass
+class BreakdownRow:
+    """One (label x arm) slice of the attack cells, where label is a technique
+    or a position. A different group-by over the SAME paired outcomes; it adds
+    no runs. n is small per slice (mutations x positions), so each interval is
+    wide: read the heatmap for patterns, not for strong per-cell claims."""
+    by: str                # "technique" or "position"
+    label: str             # the technique or position value
+    arm: str
+    n: int
+    executed: int
+    attempted: int
+    attempted_structural: int
+    executed_ci: tuple[float, float]
+    attempted_ci: tuple[float, float]
+    structural_ci: tuple[float, float]
 
     @property
     def executed_rate(self) -> float:
@@ -130,7 +156,7 @@ def run_grid(carrier, cells, arms=ARMS, *, gullible=True,
             outcomes.append(CellOutcome(
                 scenario.id, arm_name, scenario.is_attack,
                 sec.executed, sec.attempted, sec.attempted_structural,
-                util.completed))
+                util.completed, scenario.technique, scenario.position))
     return outcomes
 
 
@@ -213,11 +239,99 @@ def _cell(k: int, n: int, ci: tuple[float, float]) -> str:
     return f"{k}/{n} {rate:.0%} [{ci[0]:.0%},{ci[1]:.0%}]"
 
 
+# How to read each outcome's group label. Benign controls have None and are
+# skipped; the breakdown is defined over attack cells only.
+_LABELS = {
+    "technique": lambda o: o.technique,
+    "position": lambda o: o.position,
+}
+
+
+def breakdown(outcomes: list[CellOutcome], *, by: str = "technique") -> list[BreakdownRow]:
+    """Re-aggregate the attack cells by technique or position, per arm.
+
+    Grouping order follows first appearance in `outcomes`, which run_grid emits
+    cell-major / arm-minor, so rows come out in corpus order then ARMS order --
+    stable and reproducible without an explicit sort.
+    """
+    try:
+        label_of = _LABELS[by]
+    except KeyError:
+        raise ValueError(f"unknown breakdown key {by!r}; use one of {tuple(_LABELS)}")
+
+    groups: dict[tuple[str, str], list[CellOutcome]] = {}
+    for o in outcomes:
+        if not o.is_attack:
+            continue
+        label = label_of(o)
+        if label is None:
+            continue
+        groups.setdefault((label, o.arm), []).append(o)
+
+    rows = []
+    for (label, arm), cells in groups.items():
+        n = len(cells)
+        ex = sum(c.executed for c in cells)
+        at = sum(c.attempted for c in cells)
+        st = sum(c.attempted_structural for c in cells)
+        rows.append(BreakdownRow(
+            by=by, label=label, arm=arm, n=n,
+            executed=ex, attempted=at, attempted_structural=st,
+            executed_ci=wilson_interval(ex, n),
+            attempted_ci=wilson_interval(at, n),
+            structural_ci=wilson_interval(st, n)))
+    return rows
+
+
+_METRICS = {
+    "executed": lambda r: r.executed,
+    "attempted": lambda r: r.attempted,
+    "structural": lambda r: r.attempted_structural,
+}
+
+
+def format_breakdown(rows: list[BreakdownRow], *, metric: str = "executed",
+                     model_name: str = "mock") -> str:
+    """A label x arm matrix of one metric's rate, as a plain-text heatmap.
+
+    Stage 10 renders the same rows as a coloured HTML grid; this is the eyeball
+    version. ASCII only for a cp1252 console.
+    """
+    if metric not in _METRICS:
+        raise ValueError(f"unknown metric {metric!r}; use one of {tuple(_METRICS)}")
+    count = _METRICS[metric]
+
+    by = rows[0].by if rows else "technique"
+    labels = _ordered_unique(r.label for r in rows)
+    arms = _ordered_unique(r.arm for r in rows)
+    cell = {(r.label, r.arm): r for r in rows}
+    n_per = cell[(labels[0], arms[0])].n if rows else 0
+
+    lines = [f"injectlab breakdown by {by} - metric={metric} - model={model_name}"]
+    if model_name == "mock":
+        lines.append("SIMULATION: mock numbers are NOT findings about any real model.")
+    lines += [
+        f"Rate per ({by} x arm) over attack cells; n={n_per} each, so every cell "
+        "is noisy (read patterns, not single cells).",
+        "",
+        f"{by:<18}" + "".join(f"{a:>17}" for a in arms),
+    ]
+    for label in labels:
+        cells = []
+        for arm in arms:
+            r = cell.get((label, arm))
+            cells.append("-" if r is None else f"{count(r) / r.n:.0%}")
+        lines.append(f"{label:<18}" + "".join(f"{c:>17}" for c in cells))
+    return "\n".join(lines)
+
+
 def main() -> None:  # pragma: no cover - convenience entry point
     carrier, seeds = load_corpus()
     cells = build_cells(carrier, seeds)
     outcomes = run_grid(carrier, cells)
     print(format_report(summarise(outcomes)))
+    print()
+    print(format_breakdown(breakdown(outcomes, by="technique")))
 
 
 if __name__ == "__main__":  # pragma: no cover

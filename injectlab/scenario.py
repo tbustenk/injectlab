@@ -16,6 +16,10 @@ class Scenario:
     document_name: str
     document_text: str
     is_attack: bool
+    # Labels that let an outcome describe itself without re-loading the corpus.
+    # Both are None for the benign control (no technique, no injection position).
+    technique: str | None = None
+    position: str | None = None
 
     def make_env(self, secret: str) -> Environment:
         return Environment(documents={self.document_name: self.document_text},

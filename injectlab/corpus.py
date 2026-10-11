@@ -80,6 +80,8 @@ def build_scenario(carrier: Carrier, seed: Seed, *,
         document_name=carrier.document_name,
         document_text=text,
         is_attack=True,
+        technique=seed.technique,
+        position=position,
     )
 
 
